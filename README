@@ -1,0 +1,92 @@
+# Rational & Objectifs
+
+Peut on identifier des marqueurs précoces de risque d'évolution vers des pathologies psy  (SZ & BD) ?
+Si on a de tel marqueurs de risque cela permet de d'ajuster une prise en charge spécifique.
+
+Idealemant on aurait souhaité des mesures longitudinalles dès l'enfance, et corréler ces marqueurs avec l'apparition de troubles chez le jeune adulte.
+On a pas de tel phéntotype longitudinaux, mais on a les phéntotypes et le statut clinique à seul point temporel.
+Dans cetet imagerie chez le jeune adult, peut-on identifer une signature du trouble précoce présente depuis l'enfance du reste ?
+Hypthèse l'emprunte sulcal est stable depuis l'enfance, elle permet d'identifier une composante péhnotypique précoce.
+Autrement dit, on va utiliser les sillons pour isoler une composante précoce du reste de la variabilité anatomique, qui serait plus conséquence de l'interaction avec l'environnement.
+
+Notations
+Es => E share or sulcal
+Eo => E other
+
+Es(A) -> Zs
+Eo(A) -> Zo
+Ew(Sulc) -> Zw
+
+Est-ce que cette composante pehnotypique précoce une variabilité clinique précoce.
+Les Neurological Soft Signs (NSS) sont une telle varibilité clinique précoce stable.
+1) Predict NSS from Zs, Zo, Zw et [Zs, Zo]
+Hypothèse : Zs prédit mieux les NSS que Zo
+Revue de litérature NSS Sillons
+- Revue générale: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9261110/
+- Sillons: https://www.researchgate.net/publication/230670994_Cortex_Morphology_in_First-Episode_Psychosis_Patients_With_Neurological_Soft_Signs
+AUSZ: Match numerosujet de data_nss_dev2.xlsx avec AUSZ_NSS_dev.xlsx car (AUSZ_NSS_dev.xlsx/Code_AUSZ match participant_id.tsv/Study Subject ID)
+STARTS/ICAAR: ??
+
+# Datasets
+
+## AUSZ (SZ)
+anton.iftimovici@gmail.com
+julie
+MOK
+
+Descriptif
+- control
+- asd
+- scz
+- scz-asd (early onset)
+
+NEMO (BD) cohort
+antoinelefrere@hotmail.com
+
+
+# Experimental design
+
+1) Sur AUSZ & ICARR, predict NSS from Zs, Zo, Zw et [Zs, Zo] Hypothèse : Zs prédit mieux les NSS que Zo
+Les images sont là
+/neurospin/psy_sbox/AUSZ
+/neurospin/psy_sbox/start-icaar-eugei/
+
+2) Predire Status clinique [scz-asd+scz vs control] à partir de Zs, Zo, Zw et [Zs, Zo]
+Zo => MLP => So \
+                 | => scz vs ctl
+Zs => LMP => Ss /
+
+So ^
+   |  scz
+   |
+   |
+   |              scz-asd
+   ------------------> Ss
+
+On sépare/décompose notre variabilité anatiomique en 2 compartiments, permetant de mettre en évidence deux sous-groupe différent d'une même pathologie
+
+
+# Remap clinical data with imaging data
+
+## AUSZ
+
+participant_id.tsv
+- (1) Utiliser "Study Subject ID" (ex: AZ-SV-01-001) pour faire le lien avec les données cliniques
+- (2) participant_id
+
+Dans /neurospin/psy_sbox/AUSZ/sourcedata/
+
+Fichier de correspondance
+- AUSZ_2022_clinical_data_from_AntonIftimovici/DataAUSZviaSPSS_Gilles_21102021.csv
+  * (A) StudySubjectID (ex: AZ-SV-01-001)
+  * (B) PersonID (ex: 4196)
+
+Les NSS sont là:
+- AUSZ_2023_clinical_data_from_EmmaKrebs/data_nss_dev2.csv
+   * (a) numerosujet (ex: 4196)
+
+Mapping (2) imagerie avec (1) => (A) => (B) => (a) NSSS
+
+## ICAR-START
+
+
