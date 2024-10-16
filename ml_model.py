@@ -124,7 +124,14 @@ def train(arr, df, scheme, model, label, preproc, scaler,
 
         test_mask = scheme[f"fold{fold}"] == "test"
         test_data = arr[test_mask]
-        
+        permutation = re.search("permutation-([0-9]+)", label)
+        if permutation is None:
+            y_test = df.loc[test_mask, label]
+        else:
+            # true label for test set
+            permutation = permutation.group(0)
+            y_test = df.loc[test_mask, label.replace(permutation, "permutation-0")]
+                
         if label in ["sex", "diagnosis"]:
             y_train = y_train.replace(config.label_mapping).values.astype(int)
             y_test = y_test.replace(config.label_mapping).values.astype(int)
