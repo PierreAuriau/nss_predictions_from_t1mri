@@ -9,6 +9,7 @@ import sys
 import argparse
 import pandas as pd
 import numpy as np
+import re
 import itertools
 
 import nibabel as nib
@@ -24,41 +25,44 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import make_pipeline
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, roc_auc_score, balanced_accuracy_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, \
+                            r2_score, roc_auc_score, balanced_accuracy_score
 
 from config import Config
 
 config = Config()
 
-def load_data(preproc):
-    try:
-        if preproc == "vbm":
-            arr = np.load(os.path.join(config.tmp, "interim", "ausz_t1mri_mwp1_gs-raw_data64.npy"), mmap_mode="r")
-            m_vbm = nib.load(os.path.join(config.root, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
-            brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
-            print(f"WARNING: you are using a tmp directory : {config.tmp}")
-        elif preproc == "skeleton":
-            arr_raw = np.load(os.path.join(config.tmp, "interim", "ausz_t1mri_skeleton_data32.npy"), mmap_mode="r")
-            arr = np.zeros_like(arr_raw)
-            for i, img in enumerate(arr_raw):  
-                arr[i, 0, ...] = gaussian_filter(img[0], sigma=(1.0, 1.0, 1.0), mode="constant", cval=0.0, radius=(2, 2, 2))
-            m_vbm = nib.load(os.path.join(config.root, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
-            brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
-            brain_mask = np.pad(brain_mask, pad_width = ((3, 4), (3, 4), (3, 4)))
-            brain_mask = binary_dilation(brain_mask, iterations=4, border_value=0, origin=0)
-            print(f"WARNING: you are using a tmp directory : {config.tmp}")
-        df = pd.read_csv(os.path.join(config.tmp, "processed", "ausz_t1mri_participants.csv"), dtype=config.id_types)
-        scheme = pd.read_csv(os.path.join(config.tmp, "processed", "nss_stratified_10_fold_ausz.csv"), dtype=config.id_types)
-        print(f"WARNING: you are using a tmp directory : {config.tmp}")
-        print("WARNING: you are using the scheme : nss_stratified_10_fold_ausz.csv")
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Data not found in : {config.root}")
+def load_data(preproc, texture=None):
+    
+    if preproc == "vbm":
+        arr = np.load(os.path.join(config.path2interim, "ausz_t1mri_mwp1_gs-raw_data64.npy"), mmap_mode="r")
+        m_vbm = nib.load(os.path.join(config.path2brainmasks, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
+        brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
+    elif preproc == "skeleton":
+        arr_raw = np.load(os.path.join(config.path2interim, "ausz_t1mri_skeleton_data32.npy"), mmap_mode="r")
+        arr = np.zeros_like(arr_raw)
+        for i, img in enumerate(arr_raw):  
+            arr[i, 0, ...] = gaussian_filter(img[0], sigma=(1.0, 1.0, 1.0), mode="constant", cval=0.0, radius=(2, 2, 2))
+        m_vbm = nib.load(os.path.join(config.path2brainmasks, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
+        brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
+        brain_mask = np.pad(brain_mask, pad_width = ((3, 4), (3, 4), (3, 4)))
+        brain_mask = binary_dilation(brain_mask, iterations=4, border_value=0, origin=0)
+    elif preproc == "freesurfer":
+        arr = np.load(os.path.join(config.path2interim, "ausz_freesurfer_thickness_curv_area_sulc.npy"), mmap_mode="r")
+        with open(os.path.join(config.path2interim, "channels.txt"), "r") as f:
+            channels = [re.search("texture-([a-z]+)", l).group(1) for l in f.readlines()]
+        arr = arr[:, channels.index(texture), ...]
+        brain_mask = None
+    df = pd.read_csv(os.path.join(config.tmp, "processed", "ausz_t1mri_participants.csv"), dtype=config.id_types)
+    scheme = pd.read_csv(os.path.join(config.tmp, "processed", "nss_stratified_10_fold_ausz.csv"), dtype=config.id_types)
+
     print(f"Nb of subjects in scheme: {len(scheme)}")
     print(f"Nb of subjects with metadata: {len(df)}")
     print(f"Data shape : {arr.shape}")
-    print(f"Brain mask shape : {brain_mask.shape}")
-    arr = arr[:, 0, brain_mask].astype(np.float32)
-    print(f"Data shape after applying mask: {arr.shape}")
+    if brain_mask is not None:
+        print(f"Brain mask shape : {brain_mask.shape}")
+        arr = arr[:, 0, brain_mask].astype(np.float32)
+        print(f"Data shape after applying mask: {arr.shape}")
     assert (df[["participant_id", "session"]] == scheme[["participant_id", "session"]]).all().all(), \
            print("Scheme and participant dataframe do not have same order.")
     return arr, df, scheme
@@ -102,17 +106,8 @@ def get_model_cv(model, scaler, cv_train=3):
     steps.append(models_cv[model + "_cv"])
     return make_pipeline(*steps)
 
-def train(arr, df, scheme, model, label, preproc, scaler, saving_dir):
-
-    mapping = {
-       "M": 0,
-       "m": 0,
-       "F": 1,
-       "control": 0,
-       "scz": 1,
-       "scz-asd": 1,
-       "asd": 1
-    }
+def train(arr, df, scheme, model, label, preproc, scaler, 
+          saving_dir, save_y_pred=False, texture=None):
 
     model_cv = get_model_cv(model, scaler)
     
@@ -129,11 +124,10 @@ def train(arr, df, scheme, model, label, preproc, scaler, saving_dir):
 
         test_mask = scheme[f"fold{fold}"] == "test"
         test_data = arr[test_mask]
-        y_test = df.loc[test_mask, label]
         
         if label in ["sex", "diagnosis"]:
-            y_train = y_train.replace(mapping).values.astype(int)
-            y_test = y_test.replace(mapping).values.astype(int)
+            y_train = y_train.replace(config.label_mapping).values.astype(int)
+            y_test = y_test.replace(config.label_mapping).values.astype(int)
             
             metrics = {
                 "roc_auc": lambda y_pred, y_true: roc_auc_score(y_true=y_true, y_score=y_pred[:, 1]),
@@ -152,8 +146,6 @@ def train(arr, df, scheme, model, label, preproc, scaler, saving_dir):
 
         # 2) Training    
         model_cv.fit(train_data, y_train)
-        # best_score, best_params = model_cv[1].best_score_, model_cv[1].best_params_
-        # print(f"Model trained: best score : {best_score:.2g} - best params : {best_params}")
 
         # 3) Testing
         print(f"Score on test set: {model_cv.score(test_data, y_test)}")
@@ -173,8 +165,12 @@ def train(arr, df, scheme, model, label, preproc, scaler, saving_dir):
                     continue
 
                 # 4) Saving
-                if label == "NSS":
-                    np.save(os.path.join(saving_dir, f"y_pred_label-{label}_preproc-{preproc}_fold-{fold}.npy"), y_pred)
+                if save_y_pred:
+                    if texture is None:
+                        filename = f"y_pred_label-{label}_preproc-{preproc}_fold-{fold}.npy"
+                    else:
+                        filename = f"y_pred_label-{label}_preproc-{preproc}_texture-{texture}_fold-{fold}.npy"
+                    np.save(os.path.join(saving_dir, filename), y_pred)
 
                 logs["label"].append(label)
                 logs["fold"].append(fold)
@@ -184,49 +180,12 @@ def train(arr, df, scheme, model, label, preproc, scaler, saving_dir):
                 logs["preproc"].append(preproc)
                 logs["metric"].append(name)
                 logs["value"].append(value)
+                if texture is not None:
+                    logs["texture"].append(texture)
     
     logs_df = pd.DataFrame(logs)
-    logs_df.to_csv(os.path.join(saving_dir, f"preproc-{preproc}_model-{model}_label-{label}.csv"), 
-                                sep=",", index=False)
-
-
-
-def parse_args(argv):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--saving_dir", required=True, type=str, help="Saving directory.")
-    parser.add_argument("--models", type=str, nargs="+", default=["lrl2"], help="Models to trained", 
-                         choices=["lrl2", "lrenet", "svmrbf", "forest", "gb"])
-    parser.add_argument("--preproc", required=True, type=str, choices=["vbm", "skeleton"], help="Data preprocessing")
-    parser.add_argument("--scaler", action="store_true", help="Scale the data before training.")
-    parser.add_argument("--labels", type=str, nargs="+", default=["NSS"], help="Labels to predict", 
-                         choices=["NSS", "age", "sex", "diagnosis", "tiv", "skeleton_size"])
-    parser.add_argument("--n_permutations", type=int, default=1000)
-    args = parser.parse_args(argv)
-
-    return args
-
-if __name__ == "__main__":
-
-    args = parse_args(sys.argv[1:])
-    saving_dir = os.path.join(config.path2models, args.preproc, args.saving_dir)
-    os.makedirs(saving_dir, exist_ok=True)
-    scaler = args.scaler
-    labels = args.labels
-    preproc = args.preproc
-    print("Data Loading")
-    arr, df, scheme = load_data(args.preproc)
-    n_permutations = args.n_permutations + 1
-    if n_permutations > 1:
-        label = "NSS"
-        permutations = {}
-        permutations[f"{label}_permutation-0"] = df[label].values
-        for i in range(1, n_permutations):
-            permutations[f"{label}_permutation-{i}"] = np.random.permutation(df[label].values)
-        permutations_df = pd.DataFrame(permutations)
-        df = pd.concat((df, permutations_df), axis=1)
-        labels += [f"{label}_permutation-{i}" for i in range(n_permutations)]
-    models = ["logreg" if l in ["diagnosis", "sex"] else "lrl2" for l in labels] # add several models
-    list_args = [(arr, df, scheme, m, l, preproc, scaler, saving_dir) for m, l in zip(models, labels)]
-    print(len(list_args))
-    with Pool() as pool:
-        pool.starmap(train, list_args)
+    if texture is None:
+        filename = f"preproc-{preproc}_model-{model}_label-{label}.csv"
+    else:
+        filename = f"preproc-{preproc}_texture-{texture}_model-{model}_label-{label}.csv"
+    logs_df.to_csv(os.path.join(saving_dir, filename), sep=",", index=False)
