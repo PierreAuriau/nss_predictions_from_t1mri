@@ -35,21 +35,25 @@ config = Config()
 def load_data(preproc, texture=None):
     
     if preproc == "vbm":
-        arr = np.load(os.path.join(config.path2interim, "ausz_t1mri_mwp1_gs-raw_data64.npy"), mmap_mode="r")
+        arr = np.load(os.path.join(config.path2processed, "ausz_t1mri_mwp1_gs-raw_data64.npy"), mmap_mode="r")
         m_vbm = nib.load(os.path.join(config.path2brainmasks, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
         brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
+        # match brain mask shape with array shape
+        brain_mask =  brain_mask[:, 8:136, :] # crop
+        brain_mask = np.pad(brain_mask, pad_width=((3, 4), (0, 0), (3, 4)), mode='constant')
     elif preproc == "skeleton":
-        arr_raw = np.load(os.path.join(config.path2interim, "ausz_t1mri_skeleton_data32.npy"), mmap_mode="r")
+        arr_raw = np.load(os.path.join(config.path2processed, "ausz_t1mri_skeleton_data32.npy"), mmap_mode="r")
         arr = np.zeros_like(arr_raw)
         for i, img in enumerate(arr_raw):  
             arr[i, 0, ...] = gaussian_filter(img[0], sigma=(1.0, 1.0, 1.0), mode="constant", cval=0.0, radius=(2, 2, 2))
         m_vbm = nib.load(os.path.join(config.path2brainmasks, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
         brain_mask = (m_vbm.get_fdata() != 0).astype(bool)
-        brain_mask = np.pad(brain_mask, pad_width = ((3, 4), (3, 4), (3, 4)))
+        # match brain mask shape with array shape
+        brain_mask = np.pad(brain_mask, pad_width = ((3, 4), (7, 8), (3, 4)))
         brain_mask = binary_dilation(brain_mask, iterations=4, border_value=0, origin=0)
     elif preproc == "freesurfer":
-        arr = np.load(os.path.join(config.path2interim, "ausz_freesurfer_thickness_curv_area_sulc.npy"), mmap_mode="r")
-        with open(os.path.join(config.path2interim, "channels.txt"), "r") as f:
+        arr = np.load(os.path.join(config.path2processed, "ausz_freesurfer_thickness_curv_area_sulc.npy"), mmap_mode="r")
+        with open(os.path.join(config.path2processed, "channels.txt"), "r") as f:
             channels = [re.search("texture-([a-z]+)", l).group(1) for l in f.readlines()]
         arr = arr[:, channels.index(texture), ...]
         brain_mask = None
